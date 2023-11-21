@@ -128,12 +128,10 @@ namespace KeyBinds {
 	using BindCallback = std::add_pointer<void(GLFWwindow* window, int action, int mods)>::type;
 	
 	
-#define rnd() double(std::rand()/RAND_MAX)
 	std::unordered_map<KeyBindsScope, std::unordered_map<glfw::Keys, std::vector<BindCallback>>> bindCallbacks;
 	void callCallbacks(GLFWwindow* window, glfw::Keys key, int action, int mods, KeyBindsScope scope) {
-		// if (bindCallbacks.contains(scope) && bindCallbacks[scope].contains(key) && !bindCallbacks[scope][key].empty() )
-			for (const auto& callback : bindCallbacks[scope][key])
-				callback(window, action, mods);
+		for (const auto& callback : bindCallbacks[scope][key])
+			callback(window, action, mods);
 	}
 	using fdm::StateManager;
 	typedef bool(__thiscall* KeyInputFunct)(void* self, StateManager& s, glfw::Keys key, int scancode, int action, int mods);

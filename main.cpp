@@ -6,7 +6,6 @@
 
 #include <windows.h>
 #include <cstdio>
-#include <format>
 #include <4dm.h>
 
 #include "GLFWKeys.h"
@@ -74,8 +73,7 @@ enum KeyBindsScope
 	TEXTINPUT
 };
 
-std::map<KeyBindsScope, std::vector<std::string>> namesOrder =
-{
+std::map<KeyBindsScope, std::vector<std::string>> namesOrder = {
 	{
 		KeyBindsScope::GLOBAL,
 		{
@@ -124,59 +122,29 @@ std::map<KeyBindsScope, std::vector<std::string>> namesOrder =
 	}
 };
 
-std::unordered_map<KeyBindsScope, std::unordered_map<std::string, Keys>> keyBinds =
-{
-	{
-		KeyBindsScope::GLOBAL,
-		{
-			
-		}
-	},
-	{
-		KeyBindsScope::PLAYER,
-		{
-			{ "4D Miner:Jump", Keys::Space },
-			{ "4D Miner:Left", Keys::A },
-			{ "4D Miner:Right", Keys::D },
-			{ "4D Miner:Back", Keys::S },
-			{ "4D Miner:Forward", Keys::W },
-			{ "4D Miner:Strafe W+", Keys::E },
-			{ "4D Miner:Strafe W-", Keys::Q },
-			{ "4D Miner:Crouch", Keys::LeftShift },
-			{ "4D Miner:Sprint", Keys::LeftControl },
-			{ "4D Miner:Drop", Keys::G },
-			{ "4D Miner:Inventory", Keys::Tab },
-			{ "4D Miner:Look 4D", Keys::M },
-			{ "4D Miner:Slot 1", Keys::Alpha1 },
-			{ "4D Miner:Slot 2", Keys::Alpha2 },
-			{ "4D Miner:Slot 3", Keys::Alpha3 },
-			{ "4D Miner:Slot 4", Keys::Alpha4 },
-			{ "4D Miner:Slot 5", Keys::Alpha5 },
-			{ "4D Miner:Slot 6", Keys::Alpha6 },
-			{ "4D Miner:Slot 7", Keys::Alpha7 },
-			{ "4D Miner:Slot 8", Keys::Alpha8 },
-			{ "4D Miner:Chunks Reload", Keys::H }
-		}
-	},
-	{
-		KeyBindsScope::STATEGAME,
-		{
-
-		}
-	},
-	{
-		KeyBindsScope::STATETITLESCREEN,
-		{
-
-		}
-	},
-	{
-		KeyBindsScope::TEXTINPUT,
-		{
-
-		}
-	}
-};
+std::unordered_map<KeyBindsScope, std::unordered_map<std::string, Keys>> keyBinds = {{ KeyBindsScope::PLAYER, {
+	{ "4D Miner:Jump", Keys::Space },
+	{ "4D Miner:Left", Keys::A },
+	{ "4D Miner:Right", Keys::D },
+	{ "4D Miner:Back", Keys::S },
+	{ "4D Miner:Forward", Keys::W },
+	{ "4D Miner:Strafe W+", Keys::E },
+	{ "4D Miner:Strafe W-", Keys::Q },
+	{ "4D Miner:Crouch", Keys::LeftShift },
+	{ "4D Miner:Sprint", Keys::LeftControl },
+	{ "4D Miner:Drop", Keys::G },
+	{ "4D Miner:Inventory", Keys::Tab },
+	{ "4D Miner:Look 4D", Keys::M },
+	{ "4D Miner:Slot 1", Keys::Alpha1 },
+	{ "4D Miner:Slot 2", Keys::Alpha2 },
+	{ "4D Miner:Slot 3", Keys::Alpha3 },
+	{ "4D Miner:Slot 4", Keys::Alpha4 },
+	{ "4D Miner:Slot 5", Keys::Alpha5 },
+	{ "4D Miner:Slot 6", Keys::Alpha6 },
+	{ "4D Miner:Slot 7", Keys::Alpha7 },
+	{ "4D Miner:Slot 8", Keys::Alpha8 },
+	{ "4D Miner:Chunks Reload", Keys::H }
+}}};
 
 std::vector<std::unordered_map<std::string, KeyBindsScope>> conflicts;
 
@@ -245,13 +213,19 @@ void controlsCloseButtonCallback(void* user)
 	StateSettings::instanceObj->controlsMenuOpened = false;
 	saveKeybinds();
 }
-void controlsOpenButtonCallback(void* user)
-{
+void controlsOpenButtonCallback(void* user) {
 	StateSettings::instanceObj->controlsMenuOpened = true;
 	curChangingBind = nullptr;
 }
 
-std::unordered_map<std::string, std::vector<gui::Element*>> uiStuff;
+auto modOrder = [](const auto& modname_a, const auto& modname_b){
+	if (modname_b == "4D Miner")
+		return false;
+	if (modname_a == "4D Miner")
+		return true;
+	return modname_a < modname_b;
+};
+std::map<std::string, std::vector<gui::Element*>,decltype(modOrder)> uiStuff(modOrder);
 
 void keybindButtonCallback(void* user)
 {
@@ -260,16 +234,16 @@ void keybindButtonCallback(void* user)
 }
 
 void(__thiscall* StateSettings_init)(StateSettings* self, StateManager& s);
-void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s)
-{
+void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s) {
+	
 	StateSettings_init(self, s);
-
+	
 	curChangingBind = nullptr;
-
+	
 	updateConflicts();
-
+	
 	uiStuff.clear();
-
+	
 	self->openControlsButton.text = self->controlsTitleText.text = "Keybinds";
 	self->openControlsButton.width += 30;
 	self->openControlsButton.callback = controlsOpenButtonCallback; // i was too lazy to write another hook man
@@ -279,10 +253,9 @@ void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s)
 	self->controlsOkButton.callback = controlsCloseButtonCallback; // i was too lazy to write another hook man
 
 	// init some funny ui
-	for(auto& scope : keyBinds)
-	{
-		for(auto& orderedBindName : namesOrder[scope.first])
-		{
+	for(auto& scope : keyBinds) {
+		auto modname = scope.first;
+		for(auto& orderedBindName : namesOrder[modname]) {
 			Keys bindKey = scope.second[orderedBindName];
 			std::pair<std::string, std::string> split = splitBindName(orderedBindName);
 
@@ -293,14 +266,14 @@ void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s)
 			bindName->alignX(gui::ALIGN_CENTER_X);
 			bindName->size = 2;
 			uiStuff[split.first].push_back(bindName);
-
+			
 			gui::Button* btn = new gui::Button();
 			btn->text = KeyToString(bindKey);
 			btn->alignY(gui::ALIGN_TOP);
 			btn->alignX(gui::ALIGN_CENTER_X);
 			btn->width = 40;
 			btn->height = 40;
-			btn->user = new std::pair<KeyBindsScope, std::string>(scope.first, orderedBindName);
+			btn->user = new std::pair<KeyBindsScope, std::string>(modname, orderedBindName);
 			btn->callback = keybindButtonCallback;
 			uiStuff[split.first].push_back(btn);
 		}
@@ -308,13 +281,16 @@ void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s)
 
 	int lowestPoint = 0;
 	int prevGroupLowestPoint = 0;
-	for(auto& ns : uiStuff)
-	{
-		constexpr int columns = 2;
-		const int elementsPerColumn = ns.second.size() / 2 / columns;
+	for(auto& ns : uiStuff) {
+		
+		auto modname = ns.first;
+		auto elems = ns.second;
+		
+		const int columns = 2;
+		const int elementsPerColumn = elems.size() / 2 / columns;
 
 		gui::Text* groupTitle = new gui::Text();
-		groupTitle->text = std::format("{} Binds", ns.first);
+		groupTitle->text = modname + " Binds";
 		groupTitle->size = 3;
 		groupTitle->shadow = true;
 		groupTitle->fancy = true;
@@ -323,9 +299,8 @@ void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s)
 		groupTitle->offsetY(prevGroupLowestPoint + 20);
 		self->controlsContentBox.addElement(groupTitle);
 		
-		for(int i = 0; i < ns.second.size(); i++)
-		{
-			bool isBtn = i % 2 == 1;
+		for(int i = 0; i < elems.size(); i++) {
+			bool isBtn = !! (i%2);
 			int w = 220;
 			const int bI = i / 2;
 			int column = bI / (elementsPerColumn + 1);
@@ -334,17 +309,17 @@ void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s)
 			if (lowestPoint < y)
 				lowestPoint = y;
 			
-			ns.second[i]->offsetY(y - (isBtn ? 12 : 0));
-
+			elems[i]->offsetY(y - (isBtn ? 12 : 0));
+			
 			int x = ((column * 2) - (columns - 1)) * w;
-			ns.second[i]->offsetX(x + getWidthOfElement(ns.second[i]) / 2 + (isBtn ? -60 : 0));
-
-			self->controlsContentBox.addElement(ns.second[i]);
+			elems[i]->offsetX(x + getWidthOfElement(elems[i]) / 2 + (isBtn ? -60 : 0));
+			
+			self->controlsContentBox.addElement(elems[i]);
 		}
 
 		prevGroupLowestPoint = lowestPoint + 40;
 	}
-
+	
 	self->controlsContentBox.scrollH = std::max(lowestPoint + 40 - (int)self->controlsContentBox.height, 0);
 }
 

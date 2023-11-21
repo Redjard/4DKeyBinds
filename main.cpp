@@ -177,16 +177,6 @@ void saveKeybinds(){
 	curChangingBind = nullptr;
 }
 
-void controlsCloseButtonCallback(void* user)
-{
-	StateSettings::instanceObj->controlsMenuOpened = false;
-	saveKeybinds();
-}
-void controlsOpenButtonCallback(void* user) {
-	StateSettings::instanceObj->controlsMenuOpened = true;
-	curChangingBind = nullptr;
-}
-
 auto modOrder = [](const auto& modname_a, const auto& modname_b){
 	if (modname_b == "4D Miner")
 		return false;
@@ -195,12 +185,6 @@ auto modOrder = [](const auto& modname_a, const auto& modname_b){
 	return modname_a < modname_b;
 };
 std::map<std::string, std::vector<gui::Element*>,decltype(modOrder)> uiStuff(modOrder);
-
-void keybindButtonCallback(void* user)
-{
-	auto pair = (std::pair<KeyBindsScope, std::string>*)user;
-	curChangingBind = pair;
-}
 
 void(__thiscall* StateSettings_init)(StateSettings* self, StateManager& s);
 void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s) {
@@ -215,12 +199,18 @@ void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s) {
 	
 	self->openControlsButton.text = self->controlsTitleText.text = "Keybinds";
 	self->openControlsButton.width += 30;
-	self->openControlsButton.callback = controlsOpenButtonCallback; // i was too lazy to write another hook man
+	self->openControlsButton.callback = [](auto _user) {
+		StateSettings::instanceObj->controlsMenuOpened = true;
+		curChangingBind = nullptr;
+	};
 	self->controlsContentBox.removeElement(&self->controlsText);
-
+	
 	self->controlsOkButton.text = "Close";
-	self->controlsOkButton.callback = controlsCloseButtonCallback; // i was too lazy to write another hook man
-
+	self->controlsOkButton.callback = [](auto _user){
+		StateSettings::instanceObj->controlsMenuOpened = false;
+		saveKeybinds();
+	};
+	
 	// init some funny ui
 	for(auto& scope : keyBinds) {
 		auto modname = scope.first;
@@ -243,7 +233,9 @@ void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s) {
 			btn->width = 40;
 			btn->height = 40;
 			btn->user = new std::pair<KeyBindsScope, std::string>(modname, orderedBindName);
-			btn->callback = keybindButtonCallback;
+			btn->callback = [](auto user){
+				curChangingBind = (decltype(curChangingBind)) user;
+			};
 			uiStuff[split.first].push_back(btn);
 		}
 	}
@@ -269,7 +261,7 @@ void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s) {
 		self->controlsContentBox.addElement(groupTitle);
 		
 		for(int i = 0; i < elems.size(); i++) {
-			bool isBtn = !! (i%2);
+			bool isBtn = i%2;
 			int w = 220;
 			const int bI = i / 2;
 			int column = bI / (elementsPerColumn + 1);
@@ -849,6 +841,10 @@ DWORD WINAPI Main_Thread(void* hModule)
 	
 	// don't even try touching this, this hooks all addresses in KeyBindsScopeAddrs[] with generic_keyinput() or a custom function shape
 	([]<auto... i>(std::index_sequence<i...>){(hook<KeyBindsScope(i)>(),...);})(std::make_index_sequence<KeyBinds::__LAST>());
+	
+	Hook( FUNC_STATESETTINGS_INIT, StateSettings_init_H, &StateSettings_init );
+	Hook( FUNC_STATESETTINGS_RENDER, StateSettings_render_H, &StateSettings_render );
+	Hook( FUNC_STATETITLESCREEN_UPDATE, StateTitleScreen_update_H, &StateTitleScreen_update );
 	
 	EnableHook();
 

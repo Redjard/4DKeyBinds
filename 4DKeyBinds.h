@@ -157,11 +157,11 @@ namespace KeyBinds {
 		return player_keyInput(self,window,world,key,scancode,action,mods);
 	}
 	// any Textinput
-	KeyInputFunct gui_textinput_keyInput;
-	bool gui_textinput_keyInput_H(void* self, StateManager& s, glfw::Keys key, int scancode, int action, int mods) {
+	void(__thiscall* gui_textinput_keyinput)(gui::TextInput* self, gui::Window* w, glfw::Keys key, int scancode, int action, int mods);
+	void __fastcall gui_textinput_keyinput_H(gui::TextInput* self, gui::Window* w, glfw::Keys key, int scancode, int action, int mods) {
 		isInTextInput = true;
-		callCallbacks(s.window,key,action,mods,TEXTINPUT);
-		return gui_textinput_keyInput(self,s,key,scancode,action,mods);
+		callCallbacks(w->getGLFWwindow(), key, scancode, action, mods, KeyBindsScope::TEXTINPUT);
+		gui_textinput_keyinput(self, w, key, scancode, action, mods);
 	}
 	std::unordered_map<KeyBindsScope,KeyInputFunct> originals;
 	template<auto scope> bool generic_keyinput(void* self, StateManager& s, glfw::Keys key, int scancode, int action, int mods ) {
@@ -183,7 +183,7 @@ namespace KeyBinds {
 		if (scope == PLAYER)
 			return Hook( KeyBindsScopeAddrs[PLAYER], player_keyInput_H, &player_keyInput );
 		if (scope == TEXTINPUT)
-			return Hook( KeyBindsScopeAddrs[TEXTINPUT], gui_textinput_keyInput_H, &gui_textinput_keyInput );
+			return Hook( KeyBindsScopeAddrs[TEXTINPUT], gui_textinput_keyinput_H, &gui_textinput_keyinput );
 		
 		Hook( KeyBindsScopeAddrs[scope], generic_keyinput<scope>, &originals[scope] );
 	}

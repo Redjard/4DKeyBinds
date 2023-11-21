@@ -70,57 +70,59 @@ enum KeyBindsScope
 	PLAYER,
 	STATEGAME,
 	STATETITLESCREEN,
-	TEXTINPUT
+	TEXTINPUT,
+	
+	STATECREDITS,
+	STATECREATEWORLD,  // everything is createnewworld
+	STATEMULTIPLAYER,
+	STATEDEATHSCREEN,
+	STATETUTORIAL,
+	STATESKINCHOOSER,
+	STATESETTINGS,
+	
+	__LAST
+};
+std::unordered_map<KeyBindsScope,uintptr_t> KeyBindsScopeAddrs = {
+	{ GLOBAL, base + idaOffsetFix(0x9E490) },
+	
+	{ STATEGAME, FUNC_STATEGAME_KEYINPUT },
+	{ STATETITLESCREEN, FUNC_STATETITLESCREEN_KEYINPUT },
+	{ STATECREDITS, FUNC_STATECREDITS_KEYINPUT },
+	{ STATECREATEWORLD, FUNC_STATECREATEWORLD_KEYINPUT },
+	{ STATEMULTIPLAYER, FUNC_STATEMULTIPLAYER_KEYINPUT },
+	{ STATEDEATHSCREEN, FUNC_STATEDEATHSCREEN_KEYINPUT },
+	{ STATETUTORIAL, FUNC_STATETUTORIAL_KEYINPUT },
+	{ STATESKINCHOOSER, FUNC_STATESKINCHOOSER_KEYINPUT },
+	{ STATESETTINGS, FUNC_STATESETTINGS_KEYINPUT },
+	
+	{ PLAYER, FUNC_PLAYER_KEYINPUT },
+	
+	{ TEXTINPUT, FUNC_GUI_TEXTINPUT_KEYINPUT },
 };
 
-std::map<KeyBindsScope, std::vector<std::string>> namesOrder = {
-	{
-		KeyBindsScope::GLOBAL,
-		{
-		}
-	},
-	{
-		KeyBindsScope::PLAYER,
-		{
-			"4D Miner:Jump",
-			"4D Miner:Left",
-			"4D Miner:Right",
-			"4D Miner:Back",
-			"4D Miner:Forward",
-			"4D Miner:Strafe W+",
-			"4D Miner:Strafe W-",
-			"4D Miner:Crouch",
-			"4D Miner:Sprint",
-			"4D Miner:Drop",
-			"4D Miner:Inventory",
-			"4D Miner:Look 4D",
-			"4D Miner:Slot 1",
-			"4D Miner:Slot 2",
-			"4D Miner:Slot 3",
-			"4D Miner:Slot 4",
-			"4D Miner:Slot 5",
-			"4D Miner:Slot 6",
-			"4D Miner:Slot 7",
-			"4D Miner:Slot 8",
-			"4D Miner:Chunks Reload"
-		}
-	},
-	{
-		KeyBindsScope::STATEGAME,
-		{
-		}
-	},
-	{
-		KeyBindsScope::STATETITLESCREEN,
-		{
-		}
-	},
-	{
-		KeyBindsScope::TEXTINPUT,
-		{
-		}
-	}
-};
+std::map<KeyBindsScope, std::vector<std::string>> namesOrder = {{ KeyBindsScope::PLAYER, {
+	"4D Miner:Jump",
+	"4D Miner:Left",
+	"4D Miner:Right",
+	"4D Miner:Back",
+	"4D Miner:Forward",
+	"4D Miner:Strafe W+",
+	"4D Miner:Strafe W-",
+	"4D Miner:Crouch",
+	"4D Miner:Sprint",
+	"4D Miner:Drop",
+	"4D Miner:Inventory",
+	"4D Miner:Look 4D",
+	"4D Miner:Slot 1",
+	"4D Miner:Slot 2",
+	"4D Miner:Slot 3",
+	"4D Miner:Slot 4",
+	"4D Miner:Slot 5",
+	"4D Miner:Slot 6",
+	"4D Miner:Slot 7",
+	"4D Miner:Slot 8",
+	"4D Miner:Chunks Reload"
+}}};
 
 std::unordered_map<KeyBindsScope, std::unordered_map<std::string, Keys>> keyBinds = {{ KeyBindsScope::PLAYER, {
 	{ "4D Miner:Jump", Keys::Space },
@@ -176,7 +178,7 @@ void updateConflicts()
 using BindCallback = std::add_pointer<void(GLFWwindow* window, int action, int mods)>::type;
 std::map<KeyBindsScope, std::map<std::string, std::vector<BindCallback>>> bindCallbacks;
 
-extern "C" __declspec(dllexport) void addBind(const char* bindName, int defaultKey, int scope, BindCallback callback)
+extern "C" __declspec(dllexport) void addBind(const char* bindName, glfw::Keys defaultKey, int scope, BindCallback callback)
 {
 	keyBinds[(KeyBindsScope)scope][std::string(bindName)] = (Keys)defaultKey;
 	namesOrder[(KeyBindsScope)scope].push_back(std::string(bindName));
@@ -196,8 +198,7 @@ bool justInstalledMod = false;
 
 std::pair<KeyBindsScope, std::string>* curChangingBind = nullptr;
 
-void saveKeybinds()
-{
+void saveKeybinds(){
 	std::ofstream keybindsFile("keybinds.json");
 	if (!keybindsFile.is_open()) return;
 
@@ -323,8 +324,7 @@ void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s) {
 	self->controlsContentBox.scrollH = std::max(lowestPoint + 40 - (int)self->controlsContentBox.height, 0);
 }
 
-bool isConflicting(const std::string& bind)
-{
+bool isConflicting(const std::string& bind) {
 	for(auto& conflict : conflicts)
 		if (conflict.contains(bind))
 			return true;
@@ -333,26 +333,20 @@ bool isConflicting(const std::string& bind)
 }
 
 void(__thiscall* StateSettings_render)(StateSettings* self, StateManager& s);
-void __fastcall StateSettings_render_H(StateSettings* self, StateManager& s)
-{
-	if(self->controlsMenuOpened)
-	{
-		for (auto& ns : uiStuff)
-		{
-			for(auto& e : ns.second)
-			{
-				if(gui::Button* button = dynamic_cast<gui::Button*>(e))
-				{
+void __fastcall StateSettings_render_H(StateSettings* self, StateManager& s) {
+	if(self->controlsMenuOpened) {
+		for (auto& ns : uiStuff) {
+			for(auto& e : ns.second) {
+				if(gui::Button* button = dynamic_cast<gui::Button*>(e)) {
 					auto pair = (std::pair<KeyBindsScope, std::string>*)button->user;
 
-					if (curChangingBind != pair)
-					{
+					if (curChangingBind != pair) {
 						button->text = KeyToString(keyBinds[pair->first][pair->second]);
 						if (isConflicting(pair->second))
 							button->text += " !";
-					}
-					else
+					} else {
 						button->text = "?";
+					}
 
 					int oldW = button->width;
 					button->width = button->text.length() * 16 + 24;
@@ -365,12 +359,11 @@ void __fastcall StateSettings_render_H(StateSettings* self, StateManager& s)
 	StateSettings_render(self, s);
 }
 
-struct
-{
+struct {
 	bool w; // for xw and zw comb
 } additionalKeys;
 
-void callCallbacks(GLFWwindow* window, int key, int scancode, int action, int mods, KeyBindsScope scope)
+void callCallbacks(GLFWwindow* window, glfw::Keys key, int scancode, int action, int mods, KeyBindsScope scope)
 {
 	for (const auto& bind : keyBinds[scope])
 		if (key == bind.second && bindCallbacks[scope].contains(bind.first))
@@ -378,11 +371,10 @@ void callCallbacks(GLFWwindow* window, int key, int scancode, int action, int mo
 				callback(window, action, mods);
 }
 
-void(__fastcall* keyInput)(GLFWwindow* window, int key, int scancode, int action, int mods);
-void __fastcall keyInput_H(GLFWwindow* window, int key, int scancode, int action, int mods)
-{
-	if (!curChangingBind)
-		callCallbacks(window, key, scancode, action, mods, KeyBindsScope::GLOBAL);
+bool isInTextInput;
+// Global (any keyinput)
+void(__fastcall* global_keyinput)(GLFWwindow* window, glfw::Keys key, int scancode, int action, int mods);
+void __fastcall global_keyinput_H(GLFWwindow* window, glfw::Keys key, int scancode, int action, int mods) {
 
 	// im lazy to add hook for StateSettings keyInput
 	if(action == GLFW_PRESS && StateSettings::instanceObj->controlsMenuOpened && curChangingBind)
@@ -397,34 +389,38 @@ void __fastcall keyInput_H(GLFWwindow* window, int key, int scancode, int action
 		else if((Keys)key == Keys::Escape)
 			curChangingBind = nullptr;
 	}
+	
+	isInTextInput = false;
 
-	keyInput(window, key, scancode, action, mods);
+	// this will call gui_textinput_keyinput_H() if a TextInput is focused
+	global_keyinput(window, key, scancode, action, mods);
+	
+	// if gui_textinput_keyinput_H() was called, we don't do shortcuts
+	if (!curChangingBind && !isInTextInput)
+		callCallbacks(window, key, scancode, action, mods, KeyBindsScope::GLOBAL);
 }
-
-void(__thiscall* StateGame_keyInput)(StateGame* self, StateManager& s, int key, int scancode, int action, int mods);
-void __fastcall StateGame_keyInput_H(StateGame* self, StateManager& s, int key, int scancode, int action, int mods)
-{
-	callCallbacks(s.window, key, scancode, action, mods, KeyBindsScope::STATEGAME);
-	StateGame_keyInput(self, s, key, scancode, action, mods);
-}
-
-void(__thiscall* StateTitleScreen_keyInput)(StateTitleScreen* self, StateManager& s, int key, int scancode, int action, int mods);
-void __fastcall StateTitleScreen_keyInput_H(StateTitleScreen* self, StateManager& s, int key, int scancode, int action, int mods)
-{
-	callCallbacks(s.window, key, scancode, action, mods, KeyBindsScope::STATETITLESCREEN);
-	StateTitleScreen_keyInput(self, s, key, scancode, action, mods);
-}
-
-void(__thiscall* gui_TextInput_keyInput)(gui::TextInput* self, gui::Window* w, int key, int scancode, int action, int mods);
-void __fastcall gui_TextInput_keyInput_H(gui::TextInput* self, gui::Window* w, int key, int scancode, int action, int mods)
-{
+// any Textinput
+void(__thiscall* gui_textinput_keyinput)(gui::TextInput* self, gui::Window* w, glfw::Keys key, int scancode, int action, int mods);
+void __fastcall gui_textinput_keyinput_H(gui::TextInput* self, gui::Window* w, glfw::Keys key, int scancode, int action, int mods) {
+	isInTextInput = true;
 	callCallbacks(w->getGLFWwindow(), key, scancode, action, mods, KeyBindsScope::TEXTINPUT);
-	gui_TextInput_keyInput(self, w, key, scancode, action, mods);
+	gui_textinput_keyinput(self, w, key, scancode, action, mods);
 }
-
-bool(__thiscall* Player_keyInput)(Player* self, GLFWwindow* window, World* world, int key, int scancode, int action, int mods);
-bool __fastcall Player_keyInput_H(Player* self, GLFWwindow* window, World* world, int key, int scancode, int action, int mods) 
-{
+// generic keyinput of State object
+std::unordered_map<KeyBindsScope, bool(__thiscall*)(void* self, StateManager& s, glfw::Keys key, int scancode, int action, int mods)> originals;
+template<auto scope> bool __fastcall generic_keyinput(void* self, StateManager& s, glfw::Keys key, int scancode, int action, int mods ) {
+	
+	auto result = originals[scope](self,s,key,scancode,action,mods);
+	
+	// if gui_textinput_keyinput_H() was called, we don't do shortcuts
+	if (!isInTextInput)
+		callCallbacks(s.window, key, scancode, action, mods, scope);
+	
+	return result;
+}
+// Player (in game and no other panel open)
+bool(__thiscall* player_keyinput)(Player* self, GLFWwindow* window, World* world, glfw::Keys key, int scancode, int action, int mods);
+bool __fastcall player_keyinput_H(Player* self, GLFWwindow* window, World* world, glfw::Keys key, int scancode, int action, int mods) {
 	decltype(Player::keys) keysOld = self->keys;
 	glm::vec4 forward = self->forward;
 	glm::vec4 up = self->up;
@@ -437,7 +433,7 @@ bool __fastcall Player_keyInput_H(Player* self, GLFWwindow* window, World* world
 	m4::Mat5 orientation = self->orientation;
 	float angleToRotate = self->angleToRotate;
 
-	Player_keyInput(self, window, world, key, scancode, action, mods);
+	player_keyinput(self, window, world, key, scancode, action, mods);
 	// go fuck yourself. thanks. also sorry people who put some orientation code or keys code in there but no more.
 	self->keys = keysOld;
 	self->forward = forward;
@@ -663,8 +659,19 @@ bool __fastcall Player_keyInput_H(Player* self, GLFWwindow* window, World* world
 	return false;
 }
 
-void viewportCallbackFunc(void* user, const glm::ivec4& pos, const glm::ivec2& scroll)
-{
+template<auto scope> constexpr void hook(){
+	if (scope == GLOBAL)
+		return Hook( KeyBindsScopeAddrs[GLOBAL], global_keyinput_H, &global_keyinput );
+	if (scope == PLAYER)
+		return Hook( KeyBindsScopeAddrs[PLAYER], player_keyinput_H, &player_keyinput );
+	if (scope == TEXTINPUT)
+		return Hook( KeyBindsScopeAddrs[TEXTINPUT], gui_textinput_keyinput_H, &gui_textinput_keyinput );
+	
+	Hook( KeyBindsScopeAddrs[scope], generic_keyinput<scope>, &originals[scope] );
+}
+
+
+void viewportCallbackFunc(void* user, const glm::ivec4& pos, const glm::ivec2& scroll) {
 	GLFWwindow* window = (GLFWwindow*)user;
 
 	// update the render viewport
@@ -701,16 +708,12 @@ double animTime = 0;
 bool closing = false;
 bool closed = false;
 
-void messageBoxOkCallback(void* user)
-{
+void messageBoxOkCallback(void* user) {
 	animTime = 0;
 	closing = true;
 }
 
-bool initializedA = false;
-
-double easeOutElastic(double x)
-{
+double easeOutElastic(double x) {
 	const double c4 = (2.0 * glm::pi<double>()) / 3.0;
 
 	x = glm::clamp(x, 0.0, 1.0);
@@ -723,10 +726,10 @@ double easeOutElastic(double x)
 }
 
 void(__thiscall* StateTitleScreen_update)(StateTitleScreen* self, StateManager& s, double dt);
-void __fastcall StateTitleScreen_update_H(StateTitleScreen* self, StateManager& s, double dt)
-{
+void __fastcall StateTitleScreen_update_H(StateTitleScreen* self, StateManager& s, double dt) {
 	StateTitleScreen_update(self, s, dt);
-
+	
+	static bool initializedA = false;
 	if (!initializedA)
 	{
 		glewExperimental = GL_TRUE;
@@ -859,39 +862,27 @@ DWORD WINAPI Main_Thread(void* hModule)
 		memset(newBytes13, 0x90, sizeof(newBytes13));
 		patchMemory(FUNC_PLAYER_UPDATE + 0x47B, newBytes13, sizeof(newBytes13));
 	}
-
+	
 	// load keybinds
-	if (!std::filesystem::exists("keybinds.json"))
-	{
-		justInstalledMod = true;
-
-		// create keybinds.json
-		saveKeybinds();
-	}
-	else
-	{
+	if (std::filesystem::exists("keybinds.json")) {
 		std::ifstream keybindsFile("keybinds.json");
-		if(keybindsFile.is_open())
-		{
+		if(keybindsFile.is_open()) {
 			nlohmann::json keybindsJson = nlohmann::json::parse(keybindsFile);
 			keybindsFile.close();
 			
 			keyBinds = keybindsJson;
 		}
+	} else {
+		justInstalledMod = true;
+
+		// create keybinds.json
+		saveKeybinds();
 	}
-
-	Hook(reinterpret_cast<void*>(FUNC_STATESETTINGS_INIT), reinterpret_cast<void*>(&StateSettings_init_H), reinterpret_cast<void**>(&StateSettings_init));
-	Hook(reinterpret_cast<void*>(FUNC_STATESETTINGS_RENDER), reinterpret_cast<void*>(&StateSettings_render_H), reinterpret_cast<void**>(&StateSettings_render));
-	Hook(reinterpret_cast<void*>(FUNC_STATETITLESCREEN_UPDATE), reinterpret_cast<void*>(&StateTitleScreen_update_H), reinterpret_cast<void**>(&StateTitleScreen_update));
 	
-	Hook(reinterpret_cast<void*>(FUNC_PLAYER_KEYINPUT), reinterpret_cast<void*>(&Player_keyInput_H), reinterpret_cast<void**>(&Player_keyInput));
-	Hook(reinterpret_cast<void*>(FUNC_STATEGAME_KEYINPUT), reinterpret_cast<void*>(&StateGame_keyInput_H), reinterpret_cast<void**>(&StateGame_keyInput));
-	Hook(reinterpret_cast<void*>(FUNC_STATETITLESCREEN_KEYINPUT), reinterpret_cast<void*>(&StateTitleScreen_keyInput_H), reinterpret_cast<void**>(&StateTitleScreen_keyInput));
-	Hook(reinterpret_cast<void*>(FUNC_GUI_TEXTINPUT_KEYINPUT), reinterpret_cast<void*>(&gui_TextInput_keyInput_H), reinterpret_cast<void**>(&gui_TextInput_keyInput));
-	// that address isnt in addresses.h yet. but its a function used directly in the glfwKeyCallback. and its called keyCallback lol
-	Hook(reinterpret_cast<void*>(base + idaOffsetFix(0x9E490)), reinterpret_cast<void*>(&keyInput_H), reinterpret_cast<void**>(&keyInput));
-
-	EnableHook(0);
+	// don't even try touching this, this hooks all addresses in KeyBindsScopeAddrs[] with generic_keyinput() or a custom function shape
+	([]<auto... i>(std::index_sequence<i...>){(hook<KeyBindsScope(i)>(),...);})(std::make_index_sequence<__LAST>());
+	
+	EnableHook();
 
 	return true;
 }

@@ -162,8 +162,6 @@ extern "C" __declspec(dllexport) void triggerBind(const char* bindName, KeyBinds
 		callback(nullptr, action, mods);
 }
 
-bool justInstalledMod = false;
-
 std::pair<KeyBindsScope, std::string>* curChangingBind = nullptr;
 
 void saveKeybinds(){
@@ -631,47 +629,15 @@ template<auto scope> constexpr void hook(){
 }
 
 
-void viewportCallbackFunc(void* user, const glm::ivec4& pos, const glm::ivec2& scroll) {
-	GLFWwindow* window = (GLFWwindow*)user;
-
-	// update the render viewport
-
-	int wWidth, wHeight;
-	glfwGetWindowSize(window, &wWidth, &wHeight);
-	glViewport(pos.x, wHeight - pos.y - pos.w, pos.z, pos.w);
-
-	// create a 2D projection matrix from the specified dimensions and scroll position
-
-	glm::mat4 projection2D = glm::ortho(0.0f, (float)pos.z, (float)pos.w, 0.0f, -1.0f, 1.0f);
-	projection2D = glm::translate(projection2D, { scroll.x, scroll.y, 0 });
-
-	// update all 2D shaders
-	const Shader* textShader = ShaderManager::get("textShader");
-	textShader->use();
-	glUniformMatrix4fv(glGetUniformLocation(textShader->ID, "P"), 1, GL_FALSE, &projection2D[0][0]);
-
-	const Shader* tex2DShader = ShaderManager::get("tex2DShader");
-	tex2DShader->use();
-	glUniformMatrix4fv(glGetUniformLocation(tex2DShader->ID, "P"), 1, GL_FALSE, &projection2D[0][0]);
-
-	const Shader* quadShader = ShaderManager::get("quadShader");
-	quadShader->use();
-	glUniformMatrix4fv(glGetUniformLocation(quadShader->ID, "P"), 1, GL_FALSE, &projection2D[0][0]);
-}
-
 gui::ContentBox messageBox;
 gui::Button messageBoxOk;
 gui::Text messageBoxText;
 gui::Text messageBoxText2;
 
+bool justInstalledMod = false;
 double animTime = 0;
 bool closing = false;
 bool closed = false;
-
-void messageBoxOkCallback(void* user) {
-	animTime = 0;
-	closing = true;
-}
 
 double easeOutElastic(double x) {
 	const double c4 = (2.0 * glm::pi<double>()) / 3.0;
@@ -695,7 +661,33 @@ void __fastcall StateTitleScreen_update_H(StateTitleScreen* self, StateManager& 
 		glewExperimental = GL_TRUE;
 		glewInit();
 	
-		self->ui.viewportCallback = viewportCallbackFunc;
+		self->ui.viewportCallback = [](void* user, const glm::ivec4& pos, const glm::ivec2& scroll) {
+			GLFWwindow* window = (GLFWwindow*)user;
+		
+			// update the render viewport
+		
+			int wWidth, wHeight;
+			glfwGetWindowSize(window, &wWidth, &wHeight);
+			glViewport(pos.x, wHeight - pos.y - pos.w, pos.z, pos.w);
+		
+			// create a 2D projection matrix from the specified dimensions and scroll position
+		
+			glm::mat4 projection2D = glm::ortho(0.0f, (float)pos.z, (float)pos.w, 0.0f, -1.0f, 1.0f);
+			projection2D = glm::translate(projection2D, { scroll.x, scroll.y, 0 });
+		
+			// update all 2D shaders
+			const Shader* textShader = ShaderManager::get("textShader");
+			textShader->use();
+			glUniformMatrix4fv(glGetUniformLocation(textShader->ID, "P"), 1, GL_FALSE, &projection2D[0][0]);
+		
+			const Shader* tex2DShader = ShaderManager::get("tex2DShader");
+			tex2DShader->use();
+			glUniformMatrix4fv(glGetUniformLocation(tex2DShader->ID, "P"), 1, GL_FALSE, &projection2D[0][0]);
+		
+			const Shader* quadShader = ShaderManager::get("quadShader");
+			quadShader->use();
+			glUniformMatrix4fv(glGetUniformLocation(quadShader->ID, "P"), 1, GL_FALSE, &projection2D[0][0]);
+		};
 		self->ui.viewportUser = s.window;
 		self->ui.window = s.window;
 
@@ -717,7 +709,10 @@ void __fastcall StateTitleScreen_update_H(StateTitleScreen* self, StateManager& 
 			messageBoxOk.alignX(gui::ALIGN_CENTER_X);
 			messageBoxOk.alignY(gui::ALIGN_BOTTOM);
 			messageBoxOk.offsetY(-20);
-			messageBoxOk.callback = messageBoxOkCallback;
+			messageBoxOk.callback = [](auto _user){
+				animTime = 0;
+				closing = true;
+			};
 
 			messageBoxText = gui::Text{};
 			messageBoxText.text = "You've just installed the 4DKeyBinds mod!";

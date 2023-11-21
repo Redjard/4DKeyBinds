@@ -6,13 +6,11 @@
 
 #include <windows.h>
 #include <cstdio>
-#include <4dm.h>
+#include <fstream>
 
-#include "GLFWKeys.h"
-using namespace glfw;
+#include <4dm.h>
 using namespace fdm;
 
-#include <fstream>
 
 template<typename T>
 bool containsVal(const std::vector<T>& vec, const T& value)
@@ -64,41 +62,11 @@ int getWidthOfElement(gui::Element* e)
 	return 20;
 }
 
-enum KeyBindsScope
-{
-	GLOBAL,
-	PLAYER,
-	STATEGAME,
-	STATETITLESCREEN,
-	TEXTINPUT,
-	
-	STATECREDITS,
-	STATECREATEWORLD,  // everything is createnewworld
-	STATEMULTIPLAYER,
-	STATEDEATHSCREEN,
-	STATETUTORIAL,
-	STATESKINCHOOSER,
-	STATESETTINGS,
-	
-	__LAST
-};
-std::unordered_map<KeyBindsScope,uintptr_t> KeyBindsScopeAddrs = {
-	{ GLOBAL, base + idaOffsetFix(0x9E490) },
-	
-	{ STATEGAME, FUNC_STATEGAME_KEYINPUT },
-	{ STATETITLESCREEN, FUNC_STATETITLESCREEN_KEYINPUT },
-	{ STATECREDITS, FUNC_STATECREDITS_KEYINPUT },
-	{ STATECREATEWORLD, FUNC_STATECREATEWORLD_KEYINPUT },
-	{ STATEMULTIPLAYER, FUNC_STATEMULTIPLAYER_KEYINPUT },
-	{ STATEDEATHSCREEN, FUNC_STATEDEATHSCREEN_KEYINPUT },
-	{ STATETUTORIAL, FUNC_STATETUTORIAL_KEYINPUT },
-	{ STATESKINCHOOSER, FUNC_STATESKINCHOOSER_KEYINPUT },
-	{ STATESETTINGS, FUNC_STATESETTINGS_KEYINPUT },
-	
-	{ PLAYER, FUNC_PLAYER_KEYINPUT },
-	
-	{ TEXTINPUT, FUNC_GUI_TEXTINPUT_KEYINPUT },
-};
+
+#include "4DKeyBinds.h"
+using glfw::Keys;
+using KeyBinds::KeyBindsScopeAddrs;
+using KeyBinds::KeyToString;
 
 std::map<KeyBindsScope, std::vector<std::string>> namesOrder = {{ KeyBindsScope::PLAYER, {
 	"4D Miner:Jump",
@@ -175,22 +143,22 @@ void updateConflicts()
 	conflicts = result;
 }
 
-using BindCallback = std::add_pointer<void(GLFWwindow* window, int action, int mods)>::type;
+using KeyBinds::BindCallback;
 std::map<KeyBindsScope, std::map<std::string, std::vector<BindCallback>>> bindCallbacks;
 
-extern "C" __declspec(dllexport) void addBind(const char* bindName, glfw::Keys defaultKey, int scope, BindCallback callback)
+extern "C" __declspec(dllexport) void addBind(const char* bindName, glfw::Keys defaultKey, KeyBindsScope scope, BindCallback callback)
 {
-	keyBinds[(KeyBindsScope)scope][std::string(bindName)] = (Keys)defaultKey;
-	namesOrder[(KeyBindsScope)scope].push_back(std::string(bindName));
-	bindCallbacks[(KeyBindsScope)scope][std::string(bindName)].push_back(callback);
+	keyBinds[scope][bindName] = defaultKey;
+	namesOrder[scope].push_back(bindName);
+	bindCallbacks[scope][bindName].push_back(callback);
 }
-extern "C" __declspec(dllexport) void hookBind(const char* bindName, int scope, BindCallback callback)
+extern "C" __declspec(dllexport) void hookBind(const char* bindName, KeyBindsScope scope, BindCallback callback)
 {
-	bindCallbacks[(KeyBindsScope)scope][std::string(bindName)].push_back(callback);
+	bindCallbacks[scope][bindName].push_back(callback);
 }
-extern "C" __declspec(dllexport) void triggerBind(const char* bindName, int scope, int action, int mods)
+extern "C" __declspec(dllexport) void triggerBind(const char* bindName, KeyBindsScope scope, int action, int mods)
 {
-	for (const auto& callback : bindCallbacks[(KeyBindsScope)scope][std::string(bindName)])
+	for (const auto& callback : bindCallbacks[scope][bindName])
 		callback(nullptr, action, mods);
 }
 
@@ -379,14 +347,14 @@ void __fastcall global_keyinput_H(GLFWwindow* window, glfw::Keys key, int scanco
 	// im lazy to add hook for StateSettings keyInput
 	if(action == GLFW_PRESS && StateSettings::instanceObj->controlsMenuOpened && curChangingBind)
 	{
-		if(!KeyToString((Keys)key).empty() && (Keys)key != Keys::Escape)
+		if(!KeyToString(key).empty() && key != Keys::Escape)
 		{
-			keyBinds[curChangingBind->first][curChangingBind->second] = (Keys)key;
+			keyBinds[curChangingBind->first][curChangingBind->second] = key;
 			curChangingBind = nullptr;
 			updateConflicts();
 			saveKeybinds();
 		}
-		else if((Keys)key == Keys::Escape)
+		else if(key == Keys::Escape)
 			curChangingBind = nullptr;
 	}
 	
@@ -660,12 +628,12 @@ bool __fastcall player_keyinput_H(Player* self, GLFWwindow* window, World* world
 }
 
 template<auto scope> constexpr void hook(){
-	if (scope == GLOBAL)
-		return Hook( KeyBindsScopeAddrs[GLOBAL], global_keyinput_H, &global_keyinput );
-	if (scope == PLAYER)
-		return Hook( KeyBindsScopeAddrs[PLAYER], player_keyinput_H, &player_keyinput );
-	if (scope == TEXTINPUT)
-		return Hook( KeyBindsScopeAddrs[TEXTINPUT], gui_textinput_keyinput_H, &gui_textinput_keyinput );
+	if (scope == KeyBinds::GLOBAL)
+		return Hook( KeyBindsScopeAddrs[KeyBinds::GLOBAL], global_keyinput_H, &global_keyinput );
+	if (scope == KeyBinds::PLAYER)
+		return Hook( KeyBindsScopeAddrs[KeyBinds::PLAYER], player_keyinput_H, &player_keyinput );
+	if (scope == KeyBinds::TEXTINPUT)
+		return Hook( KeyBindsScopeAddrs[KeyBinds::TEXTINPUT], gui_textinput_keyinput_H, &gui_textinput_keyinput );
 	
 	Hook( KeyBindsScopeAddrs[scope], generic_keyinput<scope>, &originals[scope] );
 }
@@ -880,7 +848,7 @@ DWORD WINAPI Main_Thread(void* hModule)
 	}
 	
 	// don't even try touching this, this hooks all addresses in KeyBindsScopeAddrs[] with generic_keyinput() or a custom function shape
-	([]<auto... i>(std::index_sequence<i...>){(hook<KeyBindsScope(i)>(),...);})(std::make_index_sequence<__LAST>());
+	([]<auto... i>(std::index_sequence<i...>){(hook<KeyBindsScope(i)>(),...);})(std::make_index_sequence<KeyBinds::__LAST>());
 	
 	EnableHook();
 

@@ -6,6 +6,7 @@
 
 #include <windows.h>
 #include <cstdio>
+#include <format>
 #include <4dm.h>
 
 #include "GLFWKeys.h"
@@ -207,17 +208,17 @@ void updateConflicts()
 using BindCallback = std::add_pointer<void(GLFWwindow* window, int action, int mods)>::type;
 std::map<KeyBindsScope, std::map<std::string, std::vector<BindCallback>>> bindCallbacks;
 
-extern "C" _declspec(dllexport) void addBind(const char* bindName, int defaultKey, int scope, BindCallback callback)
+extern "C" __declspec(dllexport) void addBind(const char* bindName, int defaultKey, int scope, BindCallback callback)
 {
 	keyBinds[(KeyBindsScope)scope][std::string(bindName)] = (Keys)defaultKey;
 	namesOrder[(KeyBindsScope)scope].push_back(std::string(bindName));
 	bindCallbacks[(KeyBindsScope)scope][std::string(bindName)].push_back(callback);
 }
-extern "C" _declspec(dllexport) void hookBind(const char* bindName, int scope, BindCallback callback)
+extern "C" __declspec(dllexport) void hookBind(const char* bindName, int scope, BindCallback callback)
 {
 	bindCallbacks[(KeyBindsScope)scope][std::string(bindName)].push_back(callback);
 }
-extern "C" _declspec(dllexport) void triggerBind(const char* bindName, int scope, int action, int mods)
+extern "C" __declspec(dllexport) void triggerBind(const char* bindName, int scope, int action, int mods)
 {
 	for (const auto& callback : bindCallbacks[(KeyBindsScope)scope][std::string(bindName)])
 		callback(nullptr, action, mods);
@@ -373,7 +374,7 @@ void __fastcall StateSettings_render_H(StateSettings* self, StateManager& s)
 					{
 						button->text = KeyToString(keyBinds[pair->first][pair->second]);
 						if (isConflicting(pair->second))
-							button->text += ' !';
+							button->text += " !";
 					}
 					else
 						button->text = "?";

@@ -4,7 +4,7 @@
 #define MOD_NAME "4DKeyBinds"
 #define MOD_VER "1.0"
 
-#include <Windows.h>
+#include <windows.h>
 #include <cstdio>
 #include <4dm.h>
 

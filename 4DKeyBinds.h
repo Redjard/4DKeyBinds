@@ -128,12 +128,11 @@ using BindCallback = std::add_pointer<void(GLFWwindow* window, int action, int m
 
 
 std::unordered_map<KeyBindsScope, std::unordered_map<glfw::Keys, std::vector<BindCallback>>> bindCallbacks;
-void callCallbacks(GLFWwindow* window, glfw::Keys key, int action, int mods, KeyBindsScope scope) {
+void callCallbacks2(GLFWwindow* window, glfw::Keys key, int action, int mods, KeyBindsScope scope) {
 	for (const auto& callback : bindCallbacks[scope][key])
 		callback(window, action, mods);
 }
-using fdm::StateManager;
-typedef bool(__thiscall* KeyInputFunct)(void* self, StateManager& s, glfw::Keys key, int scancode, int action, int mods);
+typedef bool(__thiscall* KeyInputFunct)(void* self, fdm::StateManager& s, glfw::Keys key, int scancode, int action, int mods);
 bool isInTextInput = false;
 
 // Global (any keyinput)
@@ -147,23 +146,23 @@ void global_keyInput_H(GLFWwindow* window, glfw::Keys key, int scancode, int act
 	
 	// if gui_textinput_keyInput_H() was called, we don't do shortcuts
 	if (!isInTextInput)
-		callCallbacks(window,key,action,mods,GLOBAL);
+		callCallbacks2(window,key,action,mods,GLOBAL);
 }
 // Player (in game and no other panel open)
 bool(__thiscall* player_keyInput)(void* self, GLFWwindow* window, void* world, glfw::Keys key, int scancode, int action, int mods);
 bool player_keyInput_H(void* self, GLFWwindow* window, void* world, glfw::Keys key, int scancode, int action, int mods) {
-	callCallbacks(window,key,action,mods,PLAYER);
+	callCallbacks2(window,key,action,mods,PLAYER);
 	return player_keyInput(self,window,world,key,scancode,action,mods);
 }
 // any Textinput
-void(__thiscall* gui_textinput_keyinput)(gui::TextInput* self, gui::Window* w, glfw::Keys key, int scancode, int action, int mods);
-void __fastcall gui_textinput_keyinput_H(gui::TextInput* self, gui::Window* w, glfw::Keys key, int scancode, int action, int mods) {
+void(__thiscall* gui_textinput_keyinput)(void* self, fdm::gui::Window* w, glfw::Keys key, int scancode, int action, int mods);
+void __fastcall gui_textinput_keyinput_H(void* self, fdm::gui::Window* w, glfw::Keys key, int scancode, int action, int mods) {
 	isInTextInput = true;
-	callCallbacks(w->getGLFWwindow(),key,action,mods,KeyBindsScope::TEXTINPUT);
+	callCallbacks2(w->getGLFWwindow(),key,action,mods,KeyBindsScope::TEXTINPUT);
 	gui_textinput_keyinput(self, w, key, scancode, action, mods);
 }
 std::unordered_map<KeyBindsScope,KeyInputFunct> originals;
-template<auto scope> bool generic_keyinput(void* self, StateManager& s, glfw::Keys key, int scancode, int action, int mods ) {
+template<auto scope> bool generic_keyinput(void* self, fdm::StateManager& s, glfw::Keys key, int scancode, int action, int mods ) {
 	
 	auto result = originals[scope](self,s,key,scancode,action,mods);
 	
@@ -171,7 +170,7 @@ template<auto scope> bool generic_keyinput(void* self, StateManager& s, glfw::Ke
 	if (isInTextInput)
 		return result;
 	
-	callCallbacks(s.window,key,action,mods,scope);
+	callCallbacks2(s.window,key,action,mods,scope);
 	
 	return result;
 }
@@ -252,5 +251,5 @@ inline void triggerBind(const std::string& bindName, KeyBindsScope scope, int ac
 		(bindName.c_str(), scope, action, mods);
 }
 
-}
+}  // namespace KeyBinds
 using KeyBinds::KeyBindsScope;

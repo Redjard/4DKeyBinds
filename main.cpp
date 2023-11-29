@@ -279,6 +279,12 @@ void __fastcall StateSettings_init_H(StateSettings* self, StateManager& s) {
 		prevGroupLowestPoint = lowestPoint + 40;
 	}
 	
+	// uintptr_t trubase = base + idaOffsetFix(0);
+	// std::cout << std::hex << trubase << std::endl;
+	// // std::cout << std::hex << (uintptr_t) &self->fullscreenButton.deselect - trubase << std::endl;
+	// // std::cout << std::hex << (uintptr_t)& uiStuff["4D Miner"][3]->deselect - trubase << std::endl;
+	// std::cout << ( uiStuff["4D Miner"][3]->deselect == self->fullscreenButton.deselect ) << std::endl;
+	
 	self->controlsContentBox.scrollH = std::max(lowestPoint + 40 - (int)self->controlsContentBox.height, 0);
 }
 
@@ -301,7 +307,7 @@ void __fastcall StateSettings_render_H(StateSettings* self, StateManager& s) {
 					if (curChangingBind != pair) {
 						button->text = KeyToString(keyBinds[pair->first][pair->second]);
 						if (isConflicting(pair->second))
-							button->text += " !";
+							button->text = ( "! " + button->text );
 					} else {
 						button->text = "?";
 					}
@@ -321,7 +327,7 @@ struct {
 	bool w; // for xw and zw comb
 } additionalKeys;
 
-void callCallbacks(GLFWwindow* window, glfw::Keys key, int scancode, int action, int mods, KeyBindsScope scope)
+void callCallbacks(GLFWwindow* window, glfw::Keys key, int action, int mods, KeyBindsScope scope)
 {
 	for (const auto& bind : keyBinds[scope])
 		if (key == bind.second && bindCallbacks[scope].contains(bind.first))
@@ -355,13 +361,13 @@ void __fastcall global_keyinput_H(GLFWwindow* window, glfw::Keys key, int scanco
 	
 	// if gui_textinput_keyinput_H() was called, we don't do shortcuts
 	if (!curChangingBind && !isInTextInput)
-		callCallbacks(window, key, scancode, action, mods, KeyBindsScope::GLOBAL);
+		callCallbacks(window, key, action, mods, KeyBindsScope::GLOBAL);
 }
 // any Textinput
 void(__thiscall* gui_textinput_keyinput)(gui::TextInput* self, gui::Window* w, glfw::Keys key, int scancode, int action, int mods);
 void __fastcall gui_textinput_keyinput_H(gui::TextInput* self, gui::Window* w, glfw::Keys key, int scancode, int action, int mods) {
 	isInTextInput = true;
-	callCallbacks(w->getGLFWwindow(), key, scancode, action, mods, KeyBindsScope::TEXTINPUT);
+	callCallbacks(w->getGLFWwindow(), key, action, mods, KeyBindsScope::TEXTINPUT);
 	gui_textinput_keyinput(self, w, key, scancode, action, mods);
 }
 // generic keyinput of State object
@@ -372,7 +378,7 @@ template<auto scope> bool __fastcall generic_keyinput(void* self, StateManager& 
 	
 	// if gui_textinput_keyinput_H() was called, we don't do shortcuts
 	if (!isInTextInput)
-		callCallbacks(s.window, key, scancode, action, mods, scope);
+		callCallbacks(s.window, key, action, mods, scope);
 	
 	return result;
 }
@@ -405,7 +411,7 @@ bool __fastcall player_keyinput_H(Player* self, GLFWwindow* window, World* world
 	self->orientation = orientation;
 	self->angleToRotate = angleToRotate;
 
-	callCallbacks(window, key, scancode, action, mods, KeyBindsScope::PLAYER);
+	callCallbacks(window, key, action, mods, KeyBindsScope::PLAYER);
 
 	if (action == GLFW_REPEAT)
 		return true;
@@ -629,143 +635,140 @@ template<auto scope> constexpr void hook(){
 }
 
 
-gui::ContentBox messageBox;
-gui::Button messageBoxOk;
-gui::Text messageBoxText;
-gui::Text messageBoxText2;
-
-bool justInstalledMod = false;
-double animTime = 0;
-bool closing = false;
-bool closed = false;
-
-double easeOutElastic(double x) {
-	const double c4 = (2.0 * glm::pi<double>()) / 3.0;
-
-	x = glm::clamp(x, 0.0, 1.0);
-
-	return x == 0.0
-		? 0.0
-		: x == 1.0
-		? 1.0
-		: pow(2.0, -10.0 * x) * sin((x * 10.0 - 0.75) * c4) + 1.0;
+// duration is how long the oscillation takes to decay to 1/10th the strength
+// bounces_per_decay is how many times the ease bounces up and down per duration
+// easeBounce(x,2,5) means every 2 seconds 5 bounces happen and the bounce gets 10 times weaker
+double easeBounce(double x, double duration, double bounces_per_decay) {
+	
+	const double τ = 2 * glm::pi<double>();
+	
+	x = std::max(x, 0.0)/duration;  // clamp on bottom only
+	
+	return 1 - pow(10, -x) * cos( bounces_per_decay * x * τ);
+}
+double easeSweep(double x, double length = 1) {
+	
+	x = glm::clamp(x, 0.0, 1.0)/length;
+	
+	// return 1 - sqrt(1.000001-x*x);
+	return pow(x,4);
 }
 
+bool justInstalledMod = false;
 void(__thiscall* StateTitleScreen_update)(StateTitleScreen* self, StateManager& s, double dt);
 void __fastcall StateTitleScreen_update_H(StateTitleScreen* self, StateManager& s, double dt) {
 	StateTitleScreen_update(self, s, dt);
 	
-	static bool initializedA = false;
-	if (!initializedA)
-	{
-		glewExperimental = GL_TRUE;
-		glewInit();
+	if (!justInstalledMod)
+		return;
 	
-		self->ui.viewportCallback = [](void* user, const glm::ivec4& pos, const glm::ivec2& scroll) {
-			GLFWwindow* window = (GLFWwindow*)user;
+	const int width = 500, height = 250;
+	
+	const double bounciness = 1;
+	const double ease_in_time = 1.0;
+	const double ease_out_time = 0.5;
+	
+	static gui::ContentBox* messageBox;
+	static double animTime = 0;
+	static bool closing = false;
+	
+	static int wWidth, wHeight;
+	glfwGetWindowSize(s.window, &wWidth, &wHeight);
+	
+	animTime += dt;
+	
+	static bool initializedA = false;
+	if (!initializedA) {
+		initializedA = true;
 		
+		glewInit();
+		
+		self->ui.viewportCallback = [](void* _user, const glm::ivec4& pos, const glm::ivec2& scroll) {
+			
 			// update the render viewport
-		
-			int wWidth, wHeight;
-			glfwGetWindowSize(window, &wWidth, &wHeight);
+			
 			glViewport(pos.x, wHeight - pos.y - pos.w, pos.z, pos.w);
-		
+			
 			// create a 2D projection matrix from the specified dimensions and scroll position
-		
+			
 			glm::mat4 projection2D = glm::ortho(0.0f, (float)pos.z, (float)pos.w, 0.0f, -1.0f, 1.0f);
 			projection2D = glm::translate(projection2D, { scroll.x, scroll.y, 0 });
-		
+			
 			// update all 2D shaders
 			const Shader* textShader = ShaderManager::get("textShader");
 			textShader->use();
 			glUniformMatrix4fv(glGetUniformLocation(textShader->ID, "P"), 1, GL_FALSE, &projection2D[0][0]);
-		
+			
 			const Shader* tex2DShader = ShaderManager::get("tex2DShader");
 			tex2DShader->use();
 			glUniformMatrix4fv(glGetUniformLocation(tex2DShader->ID, "P"), 1, GL_FALSE, &projection2D[0][0]);
-		
+			
 			const Shader* quadShader = ShaderManager::get("quadShader");
 			quadShader->use();
 			glUniformMatrix4fv(glGetUniformLocation(quadShader->ID, "P"), 1, GL_FALSE, &projection2D[0][0]);
 		};
 		self->ui.viewportUser = s.window;
 		self->ui.window = s.window;
-
-		// notify user to check settings->keybinds
-		if (justInstalledMod)
-		{
-			messageBox = gui::ContentBox{};
-			messageBox.width = 500;
-			messageBox.height = 250;
-			messageBox.parent = &self->ui;
-			messageBox.alignX(gui::ALIGN_CENTER_X);
-			messageBox.alignY(gui::ALIGN_CENTER_Y);
-			messageBox.offsetY(-2500);
-
-			messageBoxOk = gui::Button{};
-			messageBoxOk.width = 150;
-			messageBoxOk.height = 50;
-			messageBoxOk.text = "Ok";
-			messageBoxOk.alignX(gui::ALIGN_CENTER_X);
-			messageBoxOk.alignY(gui::ALIGN_BOTTOM);
-			messageBoxOk.offsetY(-20);
-			messageBoxOk.callback = [](auto _user){
-				animTime = 0;
-				closing = true;
-			};
-
-			messageBoxText = gui::Text{};
-			messageBoxText.text = "You've just installed the 4DKeyBinds mod!";
-			messageBoxText.size = 2;
-			messageBoxText.shadow = true;
-			messageBoxText.alignX(gui::ALIGN_CENTER_X);
-			messageBoxText.alignY(gui::ALIGN_TOP);
-			messageBoxText.offsetY(20);
-			messageBoxText.wrapWidth = 420;
-
-			messageBoxText2 = gui::Text{};
-			messageBoxText2.text = "You should check out the Settings for new keybinds.";
-			messageBoxText2.size = 2;
-			messageBoxText2.shadow = true;
-			messageBoxText2.alignX(gui::ALIGN_CENTER_X);
-			messageBoxText2.alignY(gui::ALIGN_TOP);
-			messageBoxText2.wrapWidth = 420;
-			messageBoxText2.offsetY(80);
-
-			messageBox.addElement(&messageBoxText);
-			messageBox.addElement(&messageBoxText2);
-			messageBox.addElement(&messageBoxOk);
-
-			self->ui.addElement(&messageBox);
-
-			animTime = -0.5;
-		}
-
-		initializedA = true;
+		
+		messageBox = new gui::ContentBox();
+		messageBox->width = width;
+		messageBox->height = height;
+		messageBox->parent = &self->ui;
+		messageBox->alignX(gui::ALIGN_CENTER_X);
+		messageBox->alignY(gui::ALIGN_CENTER_Y);
+		
+		auto messageBoxOk = new gui::Button();
+		messageBoxOk->width = 150;
+		messageBoxOk->height = 50;
+		messageBoxOk->text = "Ok";
+		messageBoxOk->alignX(gui::ALIGN_CENTER_X);
+		messageBoxOk->alignY(gui::ALIGN_BOTTOM);
+		messageBoxOk->offsetY(-20);
+		messageBoxOk->callback = [](auto _user){
+			animTime = 0;
+			closing = true;
+		};
+		
+		auto messageBoxText = new gui::Text();
+		messageBoxText->text = "You've just installed the 4DKeyBinds mod!";
+		messageBoxText->size = 2;
+		messageBoxText->shadow = true;
+		messageBoxText->alignX(gui::ALIGN_CENTER_X);
+		messageBoxText->alignY(gui::ALIGN_TOP);
+		messageBoxText->offsetY(20);
+		messageBoxText->wrapWidth = 420;
+		
+		auto messageBoxText2 = new gui::Text();
+		messageBoxText2->text = "You should check out the Settings for new keybinds.";
+		messageBoxText2->size = 2;
+		messageBoxText2->shadow = true;
+		messageBoxText2->alignX(gui::ALIGN_CENTER_X);
+		messageBoxText2->alignY(gui::ALIGN_TOP);
+		messageBoxText2->wrapWidth = 420;
+		messageBoxText2->offsetY(80);
+		
+		messageBox->addElement(messageBoxText);
+		messageBox->addElement(messageBoxText2);
+		messageBox->addElement(messageBoxOk);
+		
+		self->ui.addElement(messageBox);
+		
+		animTime = -.5;  // wait .5s for game start
 	}
-	if (justInstalledMod)
-	{
-		if ((animTime < 2.8 && !closing) || (animTime < 0.2 && closing))
-		{
-			animTime += dt;
-			messageBox.yOffset = (int)std::lerp(-1500, 0, !closing ? easeOutElastic(animTime / 2.5 + 0.2) : 1.0 - easeOutElastic(animTime / 2));
-		}
-		else if (closing && !closed)
-		{
-			self->ui.removeElement(&messageBox);
-			closed = true;
-		}
+	
+	if (!closing)  // oscillate in from top
+		messageBox->yOffset = std::lerp(-wHeight/2-height/2, 0, easeBounce( animTime, ease_in_time, bounciness ) );
+	if (closing)   // swoosh out to top
+		messageBox->yOffset = std::lerp(std::max(0,messageBox->yOffset), -wHeight/2-height/2, easeSweep(  animTime, ease_out_time ) );
+		//  the std::max(0,messageBox->yOffset) makes smoth transition when closed during opening animation
+	
+	if ( closing && animTime > ease_out_time) {
+		self->ui.removeElement(messageBox);
+		closing = false;
 	}
 }
 
-DWORD WINAPI Main_Thread(void* hModule)
-{
-	// Create console window if DEBUG_CONSOLE is defined
-#ifdef DEBUG_CONSOLE
-	AllocConsole();
-	FILE* fp;
-	freopen_s(&fp, "CONOUT$", "w", stdout);
-#endif
+DWORD WINAPI Main_Thread(void* hModule) {
 	
 	glfwInit();
 	
@@ -818,6 +821,8 @@ DWORD WINAPI Main_Thread(void* hModule)
 		patchMemory(FUNC_PLAYER_UPDATE + 0x47B, newBytes13, sizeof(newBytes13));
 	}
 	
+	justInstalledMod = true;  // TODO: for testing, remove later
+	
 	// load keybinds
 	if (std::filesystem::exists("keybinds.json")) {
 		std::ifstream keybindsFile("keybinds.json");
@@ -846,8 +851,7 @@ DWORD WINAPI Main_Thread(void* hModule)
 	return true;
 }
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD _reason, LPVOID lpReserved)
-{
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD _reason, LPVOID lpReserved) {
 	if (_reason == DLL_PROCESS_ATTACH)
 		CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)Main_Thread, hModule, 0, NULL);
 	return TRUE;

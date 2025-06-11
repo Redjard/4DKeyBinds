@@ -99,28 +99,30 @@ enum KeyBindsScope
 	
 	__LAST
 };
+
 std::unordered_map<KeyBindsScope,uintptr_t> KeyBindsScopeAddrs = {
-	{ GLOBAL, base + idaOffsetFix(0x9E490) },
+	{ GLOBAL, fdm::Func::main_cpp::keyCallback },
 	
-	{ STATEGAME, FUNC_STATEGAME_KEYINPUT },
-	{ STATETITLESCREEN, FUNC_STATETITLESCREEN_KEYINPUT },
-	{ STATECREDITS, FUNC_STATECREDITS_KEYINPUT },
-	{ STATECREATEWORLD, FUNC_STATECREATEWORLD_KEYINPUT },
-	{ STATEMULTIPLAYER, FUNC_STATEMULTIPLAYER_KEYINPUT },
-	{ STATEDEATHSCREEN, FUNC_STATEDEATHSCREEN_KEYINPUT },
-	{ STATETUTORIAL, FUNC_STATETUTORIAL_KEYINPUT },
-	{ STATESKINCHOOSER, FUNC_STATESKINCHOOSER_KEYINPUT },
-	{ STATESETTINGS, FUNC_STATESETTINGS_KEYINPUT },
+	{ STATEGAME, fdm::Func::StateGame::keyInput },
+	{ STATETITLESCREEN, fdm::Func::StateTitleScreen::keyInput },
+	{ STATECREDITS, fdm::Func::StateCredits::keyInput },
+	{ STATECREATEWORLD, fdm::Func::StateCreateWorld::keyInput },
+	{ STATEMULTIPLAYER, fdm::Func::StateMultiplayer::keyInput },
+	// { STATEDEATHSCREEN, fdm::Func::StateDeathScreen::keyInput },
+	{ STATEDEATHSCREEN, fdm::Func::StateSkinChooser::keyInput },
+	{ STATETUTORIAL, fdm::Func::StateTutorial::keyInput },
+	{ STATESKINCHOOSER, fdm::Func::StateSkinChooser::keyInput },
+	{ STATESETTINGS, fdm::Func::StateSettings::keyInput },
 	
-	{ PLAYER, FUNC_PLAYER_KEYINPUT },
+	{ PLAYER, fdm::Func::Player::keyInput },
 	
-	{ TEXTINPUT, FUNC_GUI_TEXTINPUT_KEYINPUT },
+	{ TEXTINPUT, fdm::Func::gui::TextInput::keyInput },
 };
 
 inline std::string KeyToString(glfw::Keys key) {
 	if (auto keyname = glfw::keynames.find(key); keyname != glfw::keynames.end())
-        return keyname->second;
-    else  // no name set
+		return keyname->second;
+	else  // no name set
 		return "kc"+std::to_string(key);
 }
 
@@ -155,11 +157,11 @@ bool player_keyInput_H(void* self, GLFWwindow* window, void* world, glfw::Keys k
 	return player_keyInput(self,window,world,key,scancode,action,mods);
 }
 // any Textinput
-void(__thiscall* gui_textinput_keyinput)(void* self, fdm::gui::Window* w, glfw::Keys key, int scancode, int action, int mods);
-void __fastcall gui_textinput_keyinput_H(void* self, fdm::gui::Window* w, glfw::Keys key, int scancode, int action, int mods) {
+void(__thiscall* textinput_field)(void* self, fdm::gui::Window* w, glfw::Keys key, int scancode, int action, int mods);
+void __fastcall textinput_field_H(void* self, fdm::gui::Window* w, glfw::Keys key, int scancode, int action, int mods) {
 	isInTextInput = true;
 	callCallbacks2(w->getGLFWwindow(),key,action,mods,KeyBindsScope::TEXTINPUT);
-	gui_textinput_keyinput(self, w, key, scancode, action, mods);
+	textinput_field(self, w, key, scancode, action, mods);
 }
 std::unordered_map<KeyBindsScope,KeyInputFunct> originals;
 template<auto scope> bool generic_keyinput(void* self, fdm::StateManager& s, glfw::Keys key, int scancode, int action, int mods ) {
@@ -177,16 +179,16 @@ template<auto scope> bool generic_keyinput(void* self, fdm::StateManager& s, glf
 
 template<auto scope> constexpr void instantiate(){
 	if (scope == GLOBAL)
-		return Hook( KeyBindsScopeAddrs[GLOBAL], global_keyInput_H, &global_keyInput );
+		return Hook( KeyBindsScopeAddrs[scope], global_keyInput_H, &global_keyInput );
 	if (scope == PLAYER)
-		return Hook( KeyBindsScopeAddrs[PLAYER], player_keyInput_H, &player_keyInput );
+		return Hook( KeyBindsScopeAddrs[scope], player_keyInput_H, &player_keyInput );
 	if (scope == TEXTINPUT)
-		return Hook( KeyBindsScopeAddrs[TEXTINPUT], gui_textinput_keyinput_H, &gui_textinput_keyinput );
+		return Hook( KeyBindsScopeAddrs[scope], textinput_field_H, &textinput_field );
 	
 	Hook( KeyBindsScopeAddrs[scope], generic_keyinput<scope>, &originals[scope] );
 }
 void fallbackInfo(){
-	printf("%s: 4DKeyBinds.dll not found, running in fallback mode on default keys!\n",MOD_NAME);
+	printf("%s: 4DKeyBinds.dll not found, running in fallback mode on default keys!\n",fdm::getModName(fdm::modID).c_str());
 }
 
 inline void fallbackBind(const std::string& bindName, glfw::Keys defaultKey, KeyBindsScope scope, BindCallback callback) {
@@ -197,14 +199,19 @@ inline void fallbackBind(const std::string& bindName, glfw::Keys defaultKey, Key
 		// don't even try touching this, this hooks all addresses in KeyBindsScopeAddrs[] with generic_keyinput() or a custom function shape
 		([]<auto... i>(std::index_sequence<i...>){(instantiate<KeyBindsScope(i)>(),...);})(std::make_index_sequence<__LAST>());
 		
+		for (int i = 0; i < __LAST; i++ )  // same as above but at runtime
+			EnableHook(KeyBindsScopeAddrs[KeyBindsScope(i)]);  // enable all the hooks we just created
+		
 		initialized = true;
 	}
 	
-	registerConsoleKeyinfo({{KeyToString(defaultKey),bindName+" ("+MOD_NAME+")"}});
+	registerConsoleKeyinfo({{KeyToString(defaultKey),bindName+" ("+(std::string)fdm::getModName(fdm::modID)+")"}});
 	bindCallbacks[scope][defaultKey].push_back(callback);
 }
 
 
+// old function no longer needed with new 4dm modloader which has dll load order
+/*
 inline bool IsLoaded() {
 	
 	static int result = -1;
@@ -224,6 +231,10 @@ inline bool IsLoaded() {
 	
 	return result = true;
 }
+// */
+inline bool IsLoaded() {
+	return fdm::isModLoaded("tr1ngledev.4dkeybinds");
+}
 
 // creates a bind with name "MOD_NAME:bindName"
 inline void addBind(const std::string& bindName, glfw::Keys defaultKey, KeyBindsScope scope, BindCallback callback) {
@@ -231,24 +242,24 @@ inline void addBind(const std::string& bindName, glfw::Keys defaultKey, KeyBinds
 	if (!IsLoaded())
 		return fallbackBind(bindName,defaultKey,scope,callback);
 	
-	reinterpret_cast<void(__stdcall*)(const char*, int, int, BindCallback)>(GetProcAddress(GetModuleHandleA("4DKeyBinds.dll"), "addBind"))
-		((std::string(MOD_NAME) + std::string(":") + bindName).c_str(), (int)defaultKey, (int)scope, callback);
+	reinterpret_cast<void(__stdcall*)(const fdm::stl::string&, int, int, BindCallback)>(GetProcAddress(fdm::getModHandle("tr1ngledev.4dkeybinds"), "addBind"))
+		( fdm::getModName(fdm::modID)+":"+bindName, (int)defaultKey, (int)scope, callback);
 }
 
 inline void hookBind(const std::string& bindName, KeyBindsScope scope, BindCallback callback)
 {
 	if (!IsLoaded())
 		return;
-	reinterpret_cast<void(__stdcall*)(const char*, KeyBindsScope, BindCallback)>(GetProcAddress(GetModuleHandleA("4DKeyBinds.dll"), "hookBind"))
-		(bindName.c_str(), scope, callback);
+	reinterpret_cast<void(__stdcall*)(const fdm::stl::string&, KeyBindsScope, BindCallback)>(GetProcAddress(fdm::getModHandle("tr1ngledev.4dkeybinds"), "hookBind"))
+		( fdm::getModName(fdm::modID)+":"+bindName, scope, callback);
 }
 
 inline void triggerBind(const std::string& bindName, KeyBindsScope scope, int action, int mods)
 {
 	if (!IsLoaded())
 		return;
-	reinterpret_cast<void(__stdcall*)(const char*, KeyBindsScope, int, int)>(GetProcAddress(GetModuleHandleA("4DKeyBinds.dll"), "triggerBind"))
-		(bindName.c_str(), scope, action, mods);
+	reinterpret_cast<void(__stdcall*)(const fdm::stl::string&, KeyBindsScope, int, int)>(GetProcAddress(fdm::getModHandle("tr1ngledev.4dkeybinds"), "triggerBind"))
+		( fdm::getModName(fdm::modID)+":"+bindName, scope, action, mods);
 }
 
 }  // namespace KeyBinds

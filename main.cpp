@@ -1,9 +1,5 @@
 // #define DEBUG_CONSOLE // Uncomment this if you want a debug console
 
-// Mod Name. Make sure it matches the mod folder's name. Also don't forget to change the output DLL name in Project Properties->General->Target Name
-#define MOD_NAME "4DKeyBinds"
-#define MOD_VER "1.0"
-
 #include <windows.h>
 #include <cstdio>
 #include <fstream>
@@ -58,7 +54,7 @@ int getWidthOfElement(gui::Element* e)
 	if (gui::Button* button = dynamic_cast<gui::Button*>(e))
 		return button->width;
 	if (gui::Text* text = dynamic_cast<gui::Text*>(e))
-		return text->text.size() * text->size * 8;
+		return text->wrapWidth;
 	return 20;
 }
 
@@ -307,7 +303,7 @@ void __fastcall StateSettings_render_H(StateSettings* self, StateManager& s) {
 					if (curChangingBind != pair) {
 						button->text = KeyToString(keyBinds[pair->first][pair->second]);
 						if (isConflicting(pair->second))
-							button->text = ( "! " + button->text );
+							button->text = ( "! " + (std::string)button->text );
 					} else {
 						button->text = "?";
 					}
@@ -339,7 +335,6 @@ bool isInTextInput;
 // Global (any keyinput)
 void(__fastcall* global_keyinput)(GLFWwindow* window, glfw::Keys key, int scancode, int action, int mods);
 void __fastcall global_keyinput_H(GLFWwindow* window, glfw::Keys key, int scancode, int action, int mods) {
-
 	// im lazy to add hook for StateSettings keyInput
 	if(action == GLFW_PRESS && StateSettings::instanceObj->controlsMenuOpened && curChangingBind)
 	{
@@ -366,8 +361,8 @@ void __fastcall global_keyinput_H(GLFWwindow* window, glfw::Keys key, int scanco
 // any Textinput
 void(__thiscall* gui_textinput_keyinput)(gui::TextInput* self, gui::Window* w, glfw::Keys key, int scancode, int action, int mods);
 void __fastcall gui_textinput_keyinput_H(gui::TextInput* self, gui::Window* w, glfw::Keys key, int scancode, int action, int mods) {
-	isInTextInput = true;
-	callCallbacks(w->getGLFWwindow(), key, action, mods, KeyBindsScope::TEXTINPUT);
+	// isInTextInput = true;
+	// callCallbacks(w->getGLFWwindow(), key, action, mods, KeyBindsScope::TEXTINPUT);
 	gui_textinput_keyinput(self, w, key, scancode, action, mods);
 }
 // generic keyinput of State object
@@ -397,7 +392,7 @@ bool __fastcall player_keyinput_H(Player* self, GLFWwindow* window, World* world
 	m4::Mat5 orientation = self->orientation;
 	float angleToRotate = self->angleToRotate;
 
-	player_keyinput(self, window, world, key, scancode, action, mods);
+	// player_keyinput(self, window, world, key, scancode, action, mods);
 	// go fuck yourself. thanks. also sorry people who put some orientation code or keys code in there but no more.
 	self->keys = keysOld;
 	self->forward = forward;
@@ -495,11 +490,11 @@ bool __fastcall player_keyinput_H(Player* self, GLFWwindow* window, World* world
 			if (self->inventoryManager.primary && self->inventoryManager.secondary)
 			{
 				self->inventoryManager.craftingMenu.updateAvailableRecipes();
-				self->inventoryManager.updateCraftingMenuBox();
+				self->inventoryManager.craftingMenu.updateAvailableRecipes();
 			}
 			world->localPlayerEvent(self, Packet::C_INVENTORY_OPEN, 0, nullptr);
 		}
-		self->resetMouse(window);
+		StateGame::instanceObj->resetMouse(window);
 	}
 	if (key == keyBinds[KeyBindsScope::PLAYER]["4D Miner:Look 4D"]) {
 		self->keys.m = action == GLFW_PRESS;
@@ -557,7 +552,7 @@ bool __fastcall player_keyinput_H(Player* self, GLFWwindow* window, World* world
 		if (!self->inventoryManager.primary || !self->inventoryManager.secondary)
 			return false;
 		self->inventoryManager.secondary = nullptr;
-		self->resetMouse(window);
+		StateGame::instanceObj->resetMouse(window);
 		return true;
 	}
 	if (key == Keys::W)
@@ -655,6 +650,7 @@ double easeSweep(double x, double length = 1) {
 }
 
 bool justInstalledMod = false;
+/*
 void(__thiscall* StateTitleScreen_update)(StateTitleScreen* self, StateManager& s, double dt);
 void __fastcall StateTitleScreen_update_H(StateTitleScreen* self, StateManager& s, double dt) {
 	StateTitleScreen_update(self, s, dt);
@@ -683,7 +679,7 @@ void __fastcall StateTitleScreen_update_H(StateTitleScreen* self, StateManager& 
 		
 		glewInit();
 		
-		self->ui.viewportCallback = [](void* _user, const glm::ivec4& pos, const glm::ivec2& scroll) {
+		self->page.viewportCallback = [](void* _user, const glm::ivec4& pos, const glm::ivec2& scroll) {
 			
 			// update the render viewport
 			
@@ -707,13 +703,13 @@ void __fastcall StateTitleScreen_update_H(StateTitleScreen* self, StateManager& 
 			quadShader->use();
 			glUniformMatrix4fv(glGetUniformLocation(quadShader->ID, "P"), 1, GL_FALSE, &projection2D[0][0]);
 		};
-		self->ui.viewportUser = s.window;
-		self->ui.window = s.window;
+		self->page.viewportUser = s.window;
+		self->page.window = s.window;
 		
 		messageBox = new gui::ContentBox();
 		messageBox->width = width;
 		messageBox->height = height;
-		messageBox->parent = &self->ui;
+		messageBox->parent = &self->page;
 		messageBox->alignX(gui::ALIGN_CENTER_X);
 		messageBox->alignY(gui::ALIGN_CENTER_Y);
 		
@@ -751,7 +747,7 @@ void __fastcall StateTitleScreen_update_H(StateTitleScreen* self, StateManager& 
 		messageBox->addElement(messageBoxText2);
 		messageBox->addElement(messageBoxOk);
 		
-		self->ui.addElement(messageBox);
+		self->page.addElement(messageBox);
 		
 		animTime = -.5;  // wait .5s for game start
 	}
@@ -763,65 +759,74 @@ void __fastcall StateTitleScreen_update_H(StateTitleScreen* self, StateManager& 
 		//  the std::max(0,messageBox->yOffset) makes smoth transition when closed during opening animation
 	
 	if ( closing && animTime > ease_out_time) {
-		self->ui.removeElement(messageBox);
+		self->page.removeElement(messageBox);
 		closing = false;
 	}
 }
+// */
 
-DWORD WINAPI Main_Thread(void* hModule) {
+$exec {
 	
-	glfwInit();
+	// fdm::startConsole();
+	// FILE* fp;
+	// freopen_s(&fp, "CONOUT$", "w", stdout);
+	
+	// // printf("redjard.contacts: %u\n",isModLoaded(fdm::modID));
+	// // printf("tr1ngledev.f1: %u\n",isModLoaded("tr1ngledev.f1"));
+	// Sleep(1000);
+	
+	
 	
 	// patch out some bullshit code
 	{ 
+		uint64_t funcPlayerUpdate = (uint64_t)getFuncAddr(Func::Player::update);
+		uint64_t funcPlayerKeyInput = (uint64_t)getFuncAddr(Func::Player::keyInput);
 		// patch out shift/crouching check for q and e in Player::update
 		unsigned char newBytes[0x4];
 		memset(newBytes, 0x90, sizeof(newBytes));
-		patchMemory(FUNC_PLAYER_UPDATE + 0x1EC, newBytes, sizeof(newBytes));
+		patchMemory(funcPlayerUpdate + 0x1EC, newBytes, sizeof(newBytes));
 
 		unsigned char newBytes2[0x8];
 		memset(newBytes2, 0x90, sizeof(newBytes2));
-		patchMemory(FUNC_PLAYER_UPDATE + 0x4B0, newBytes2, sizeof(newBytes2));
+		patchMemory(funcPlayerUpdate + 0x4B0, newBytes2, sizeof(newBytes2));
 
 		// remove some shit code from Player::keyInput
 		// remove slot change cases
 		unsigned char newBytes4[0x1b];
 		memset(newBytes4, 0x90, sizeof(newBytes4));
-		patchMemory(FUNC_PLAYER_KEYINPUT + 0x2F1, newBytes4, sizeof(newBytes4));
-		patchMemory(FUNC_PLAYER_KEYINPUT + 0x2D1, newBytes4, sizeof(newBytes4));
-		patchMemory(FUNC_PLAYER_KEYINPUT + 0x311, newBytes4, sizeof(newBytes4));
-		patchMemory(FUNC_PLAYER_KEYINPUT + 0x331, newBytes4, sizeof(newBytes4));
-		patchMemory(FUNC_PLAYER_KEYINPUT + 0x34E, newBytes4, sizeof(newBytes4));
-		patchMemory(FUNC_PLAYER_KEYINPUT + 0x36B, newBytes4, sizeof(newBytes4));
-		patchMemory(FUNC_PLAYER_KEYINPUT + 0x388, newBytes4, sizeof(newBytes4));
+		patchMemory(funcPlayerKeyInput + 0x2F1, newBytes4, sizeof(newBytes4));
+		patchMemory(funcPlayerKeyInput + 0x2D1, newBytes4, sizeof(newBytes4));
+		patchMemory(funcPlayerKeyInput + 0x311, newBytes4, sizeof(newBytes4));
+		patchMemory(funcPlayerKeyInput + 0x331, newBytes4, sizeof(newBytes4));
+		patchMemory(funcPlayerKeyInput + 0x34E, newBytes4, sizeof(newBytes4));
+		patchMemory(funcPlayerKeyInput + 0x36B, newBytes4, sizeof(newBytes4));
+		patchMemory(funcPlayerKeyInput + 0x388, newBytes4, sizeof(newBytes4));
 
 		// remove inventory from E press
 		unsigned char newBytes5[0x95];
 		memset(newBytes5, 0x90, sizeof(newBytes5));
-		patchMemory(FUNC_PLAYER_KEYINPUT + 0x129, newBytes5, sizeof(newBytes5));
+		patchMemory(funcPlayerKeyInput + 0x129, newBytes5, sizeof(newBytes5));
 
 		// even more bs
 		unsigned char newBytes10[0x2c];
 		memset(newBytes10, 0x90, sizeof(newBytes10));
-		patchMemory(FUNC_PLAYER_KEYINPUT + 0x79, newBytes10, sizeof(newBytes10));
+		patchMemory(funcPlayerKeyInput + 0x79, newBytes10, sizeof(newBytes10));
 
 		unsigned char newBytes11[0x11];
 		memset(newBytes11, 0x90, sizeof(newBytes11));
-		patchMemory(FUNC_PLAYER_KEYINPUT + 0x113, newBytes11, sizeof(newBytes11));
+		patchMemory(funcPlayerKeyInput + 0x113, newBytes11, sizeof(newBytes11));
 
 		unsigned char newBytes12[0x12];
 		memset(newBytes12, 0x90, sizeof(newBytes12));
-		patchMemory(FUNC_PLAYER_KEYINPUT + 0x2AC, newBytes12, sizeof(newBytes12));
+		patchMemory(funcPlayerKeyInput + 0x2AC, newBytes12, sizeof(newBytes12));
 
 
 		// FIX FOR MOVEMENT!!!!
 		// remove else if (replace it with an if) in A and D movement
 		unsigned char newBytes13[0x2];
 		memset(newBytes13, 0x90, sizeof(newBytes13));
-		patchMemory(FUNC_PLAYER_UPDATE + 0x47B, newBytes13, sizeof(newBytes13));
+		patchMemory(funcPlayerUpdate + 0x47B, newBytes13, sizeof(newBytes13));
 	}
-	
-	justInstalledMod = true;  // TODO: for testing, remove later
 	
 	// load keybinds
 	if (std::filesystem::exists("keybinds.json")) {
@@ -839,20 +844,13 @@ DWORD WINAPI Main_Thread(void* hModule) {
 		saveKeybinds();
 	}
 	
+	
 	// don't even try touching this, this hooks all addresses in KeyBindsScopeAddrs[] with generic_keyinput() or a custom function shape
 	([]<auto... i>(std::index_sequence<i...>){(hook<KeyBindsScope(i)>(),...);})(std::make_index_sequence<KeyBinds::__LAST>());
 	
-	Hook( FUNC_STATESETTINGS_INIT, StateSettings_init_H, &StateSettings_init );
-	Hook( FUNC_STATESETTINGS_RENDER, StateSettings_render_H, &StateSettings_render );
-	Hook( FUNC_STATETITLESCREEN_UPDATE, StateTitleScreen_update_H, &StateTitleScreen_update );
+	Hook( Func::StateSettings::init, StateSettings_init_H, &StateSettings_init );
+	Hook( Func::StateSettings::render, StateSettings_render_H, &StateSettings_render );
+	// Hook( Func::StateTitleScreen::update, StateTitleScreen_update_H, &StateTitleScreen_update );
 	
 	EnableHook();
-
-	return true;
-}
-
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD _reason, LPVOID lpReserved) {
-	if (_reason == DLL_PROCESS_ATTACH)
-		CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)Main_Thread, hModule, 0, NULL);
-	return TRUE;
 }
